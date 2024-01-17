@@ -1,10 +1,11 @@
 <script setup lang="ts">
-    import { ref } from "vue";
+    import { onMounted, ref } from "vue";
     import SocketioService from "./socket.js";
 
-    SocketioService.setupSocketConnection();
-
-    SocketioService.fetchJoinedUser();
+    interface User {
+        username: string;
+        id: string;
+    }
 
     interface Message {
         message: string;
@@ -12,34 +13,61 @@
         user: string;
     }
 
+    const message = ref("");
+
+    SocketioService.setupSocketConnection();
+
+    const joinedUsers = ref<User[]>([]);
+
+    const updateJoinedUsers = (newInfo: User[]) => {
+        joinedUsers.value.splice(0, joinedUsers.value.length, ...newInfo);
+    };
+
+    onMounted(() => {
+        SocketioService.subscribe(updateJoinedUsers);
+        SocketioService.fetchJoinedUser();
+    });
+
     const messages = ref<Message[]>([]);
 
-    const sendMessage = (message: KeyboardEvent) => {
-        let msg = message.target.value;
+    SocketioService.socket.on("chat-message", (message: Message[]) => {
+        messages.value = message;
+    });
 
-        messages.value.push({
-            message: msg,
-            type: 1,
-            user: "hello",
-        });
-        SocketioService.sendMessage(msg);
-    };
+    SocketioService.fetchJoinedUser();
 
     const user = ref("");
 
-    const login = (message: KeyboardEvent) => {
-        let name = message.target.value;
-        user.value = name;
+    const sendMessage = (args: KeyboardEvent) => {
+        const input = args.target as HTMLInputElement;
+        let msg = input.value;
+
+        messages.value.push({
+            message: msg,
+            type: 0,
+            user: user.value,
+        });
+        SocketioService.sendMessage(messages.value);
+        message.value = "";
     };
+
+    const login = (args: KeyboardEvent) => {
+        const input = args.target as HTMLInputElement;
+        let name = input.value;
+        user.value = name;
+        SocketioService.addUser(user.value);
+    };
+
+    SocketioService.fetchJoinedUser();
 </script>
 
 <template>
     <div>
         <v-app>
             <v-container>
-                <v-row>
+                <v-row v-if="!user">
                     <v-col>
-                        <h1>{{ user }}</h1>
+                        <h1 class="h1 mb-3">Type your name to join the chat</h1>
                         <v-text-field
                             label="Type your name"
                             type="text"
@@ -52,81 +80,118 @@
                         />
                     </v-col>
                 </v-row>
-                <v-row>
+                <v-row v-else>
                     <v-col cols="auto" class="flex-grow-1 flex-shrink-0">
-                        <v-card flat class="d-flex flex-column fill-height">
-                            <v-card-title>
-                                {{ user || "John Doe" }}
-                            </v-card-title>
-                            <v-card-text class="flex-grow-1 overflow-y-auto">
-                                {{ messages }}
-                                <template v-for="(msg, i) in messages">
-                                    <div
-                                        :class="{
-                                            'd-flex flex-row-reverse':
-                                                msg.message,
-                                        }"
-                                    >
-                                        <v-menu offset-y>
-                                            <template v-slot:activator="{ on }">
-                                                <v-hover
-                                                    v-slot:default="{ hover }"
+                        <template
+                            v-for="joined in joinedUsers"
+                            :key="joined.id"
+                        >
+                            <v-alert
+                                v-if="joined.username != user"
+                                type="success"
+                                title="New users coming!"
+                                :text="`${joined.username} is joined the chat`"
+                            ></v-alert>
+                        </template>
+                        <v-card
+                            flat
+                            class="d-flex flex-column"
+                            style="background-color: #f5f5f5; height: 800px"
+                        >
+                            <v-toolbar color="white">
+                                <v-toolbar-title>
+                                    You logged in as {{ user }}
+                                </v-toolbar-title>
+                            </v-toolbar>
+                            <v-card-text
+                                class="flex-grow-1 overflow-y-auto h-50 flex-shrink-1"
+                            >
+                                <template v-if="messages.length < 1">
+                                    <h3 class="text-center my-3">
+                                        No converstation has been made. Write
+                                        your message to start chatting!
+                                    </h3>
+                                </template>
+                                <template v-else>
+                                    <template v-for="msg in messages">
+                                        <div
+                                            :class="{
+                                                'd-flex flex-row-reverse':
+                                                    msg.user === user,
+                                            }"
+                                        >
+                                            <v-menu offset-y>
+                                                <template
+                                                    v-slot:activator="{ on }"
                                                 >
-                                                    <v-chip
-                                                        :color="
-                                                            msg.message
-                                                                ? 'primary'
-                                                                : 'secondary'
-                                                        "
-                                                        dark
-                                                        style="
-                                                            height: auto;
-                                                            white-space: normal;
-                                                        "
-                                                        class="pa-4 mb-2"
-                                                        v-on="on"
+                                                    <v-hover
+                                                        v-slot:default="{
+                                                            hover,
+                                                        }"
                                                     >
-                                                        {{ msg.message }}
-                                                        <sub
-                                                            class="ml-2"
-                                                            style="
-                                                                font-size: 0.5rem;
+                                                        <v-chip
+                                                            :color="
+                                                                msg.user != user
+                                                                    ? 'default'
+                                                                    : 'primary'
                                                             "
+                                                            dark
+                                                            style="
+                                                                height: auto;
+                                                                white-space: normal;
+                                                            "
+                                                            class="pa-4 mb-2"
+                                                            v-on="on"
                                                         >
-                                                            {{ msg.user }}
-                                                        </sub>
-                                                        <v-icon
-                                                            v-if="hover"
-                                                            small
+                                                            {{ msg.message }}
+                                                            <sub
+                                                                class="ml-2"
+                                                                style="
+                                                                    font-size: 0.5rem;
+                                                                "
+                                                            >
+                                                                {{
+                                                                    msg.user ===
+                                                                    user
+                                                                        ? "Me"
+                                                                        : msg.user
+                                                                }}
+                                                            </sub>
+                                                            <v-icon
+                                                                v-if="hover"
+                                                                small
+                                                            >
+                                                                expand_more
+                                                            </v-icon>
+                                                        </v-chip>
+                                                    </v-hover>
+                                                </template>
+                                                <v-list>
+                                                    <v-list-item>
+                                                        <v-list-item-title
+                                                            >delete</v-list-item-title
                                                         >
-                                                            expand_more
-                                                        </v-icon>
-                                                    </v-chip>
-                                                </v-hover>
-                                            </template>
-                                            <v-list>
-                                                <v-list-item>
-                                                    <v-list-item-title
-                                                        >delete</v-list-item-title
-                                                    >
-                                                </v-list-item>
-                                            </v-list>
-                                        </v-menu>
-                                    </div>
+                                                    </v-list-item>
+                                                </v-list>
+                                            </v-menu>
+                                        </div>
+                                    </template>
                                 </template>
                             </v-card-text>
-                            <v-card-text class="flex-shrink-1">
+                            <v-card-actions>
                                 <v-text-field
                                     label="Type a message"
                                     type="text"
                                     no-details
                                     outlined
-                                    append-outer-icon="send"
+                                    append-inner-icon="send"
                                     hide-details
+                                    v-model="message"
                                     @keyup.enter="sendMessage"
                                     @click:append-outer="sendMessage"
+                                    clearable
                                 />
-                            </v-card-text>
+                            </v-card-actions>
                         </v-card>
                     </v-col>
                 </v-row>

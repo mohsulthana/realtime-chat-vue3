@@ -12,17 +12,13 @@ app.get("/", (req, res) => {
 
 io.on("connection", (socket) => {
     console.log("a user connected, id: " + socket.id);
+
     socket.on("disconnect", () => {
         console.log("user disconnected");
     });
 
     socket.on("chat-message", async (message) => {
-        const data = {
-            message: message.message,
-            user_id: socket.id,
-            name: message.user,
-        };
-        console.log(data);
+        socket.broadcast.emit("chat-message", message);
     });
 
     socket.on("joined", async (name) => {
@@ -30,7 +26,7 @@ io.on("connection", (socket) => {
             name,
             user_id: socket.id,
         };
-        socket.broadcast.emit("joined", data);
+        socket.broadcast.emit("new-user", data);
     });
 });
 

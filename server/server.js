@@ -11,7 +11,9 @@ app.get("/", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-    console.log("a user connected, id: " + socket.id);
+    if (io.sockets.connected)
+        socket.emit("connections", Object.keys(io.sockets.connected).length);
+    else socket.emit("connections", 0);
 
     socket.on("disconnect", () => {
         console.log("user disconnected");
@@ -27,6 +29,14 @@ io.on("connection", (socket) => {
             user_id: socket.id,
         };
         socket.broadcast.emit("new-user", data);
+    });
+
+    socket.on("typing", (data) => {
+        socket.broadcast.emit("typing", data);
+    });
+
+    socket.on("stopTyping", () => {
+        socket.broadcast.emit("stopTyping");
     });
 });
 
